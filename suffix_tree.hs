@@ -1,6 +1,6 @@
 import Data.Foldable hiding (toList)
 import Data.Array
-import Prelude hiding (foldr)
+import Prelude hiding (foldr, foldl)
 
 data Edge = Edge Char Trie deriving (Show)
 data Trie = Node [Edge] | Leaf Int deriving (Show)
@@ -19,17 +19,15 @@ addSuffix (x:xs) start (Node edges) =
                then (Edge x trie):xs
                else asFirst xs char ++ [(Edge x trie)]
 
-buildTrie :: Int -> Array Int Char -> Trie
-buildTrie size array = 
-    foldr addArraySuffix root $ generateSuffixes size array
+buildTrie :: [Char] -> Trie
+buildTrie array = 
+    foldr addArraySuffix root $ generateSuffixes 0 array
     where
       addArraySuffix (start, text) trie = addSuffix text start trie
 
-generateSuffixes :: Int -> Array Int Char -> [(Int, [Char])]
-generateSuffixes size
-    array = map (subArray array) [0 .. size - 1]
-    where 
-      subArray array start = (start, elems $ slice start (size - start) array)
+generateSuffixes :: Int -> [Char] -> [(Int, [Char])]
+generateSuffixes length text@(x:xs) = (length,text) : generateSuffixes (length+1) xs
+generateSuffixes _ [] = []
 
 data TreeEdge = TreeEdge Char Tree | MergedTreeEdge Int Int Tree deriving (Show)
 data Tree = TreeNode [TreeEdge] | TreeLeaf Int deriving (Show)
@@ -56,71 +54,81 @@ buildTree = snd . buildTreeFrom 0
               let (start, tree) = buildTreeFrom (pos + 1) trie
               in (length, start, tree)
 
-addSuffixToTree :: Int -> Array Int Char -> [Char] -> Tree -> Tree
-addSuffixToTree start array text = addSuffixToTreeFrom start array text start
-    where 
-      addSuffixToTreeFrom start array text pos (TreeNode edges) =                  
-          (TreeNode $ mergeEdges pos text array start edges)
+addSuffixToTree :: Int -> [Char] -> [Char] -> Tree -> Tree
+addSuffixToTree start ft text = addSuffixToTreeFrom start ft text start
+    where
+      addSuffixToTreeFrom start _ [] pos tree = tree
+      addSuffixToTreeFrom start ft text pos (TreeNode edges) =                  
+        (TreeNode $ mergeEdges pos text ft start edges)
 
-      mergeEdges pos text _ start [] = 
+      mergeEdges pos text ft start [] = 
           [buildEdge pos text (TreeLeaf start)]
-      mergeEdges pos text@(x:xs) array start (edge:rest) =
+      mergeEdges pos text@(x:xs) ft start (edge:rest) =
           case edge of
             (TreeEdge char tree) ->
-                if char == x 
-                then (TreeEdge char $ addSuffixToTreeFrom start array xs (pos+1) tree) : rest
-                else edge : mergeEdges pos text array start rest
+              if char == x 
+              then (TreeEdge char $ addSuffixToTreeFrom start ft xs (pos+1) tree) : rest
+              else edge : mergeEdges pos text ft start rest
             (MergedTreeEdge subtextStart length tree) ->
-                if array!subtextStart == x
-                then splitMergedEdge pos text array start edge : rest
-                else edge : mergeEdges pos text array start rest
+              let subtext = slice subtextStart length ft
+                  (commonSuffix, restExisting, restNew) = extractCommon subtext text
+              in if commonSuffix /= ""
+                 then splitMergedEdge pos text ft start edge
+                      commonSuffix restExisting restNew : rest
+                 else edge : mergeEdges pos text ft start rest
 
       buildEdge pos (x:[]) tree = (TreeEdge x tree)
       buildEdge pos text tree = (MergedTreeEdge pos (length text) $ tree)
 
-      splitMergedEdge pos text array start edge@(MergedTreeEdge subtextStart size tree) =
-          let subtext = elems $ slice subtextStart size array
-              commonSuffix = extractCommon subtext text
-              commonLength = length commonSuffix
-              restNew = drop commonLength text
-              restExisting = drop commonLength subtext
-          in 
-            buildEdge pos commonSuffix 
-                          $ addSuffixToTreeFrom start array restNew (commonLength + pos)
-                          $ addSuffixToTreeFrom start array restExisting (commonLength + subtextStart) tree
-
-extractCommon :: String -> String -> String
-extractCommon [] _ = []
-extractCommon _ [] = []
-extractCommon (x:xs) (e:es) = 
+      splitMergedEdge pos text ft start edge@(MergedTreeEdge subtextStart size tree)
+          commonSuffix restExisting restNew =
+        if length commonSuffix == size
+        then
+          buildEdge pos commonSuffix
+          $ addSuffixToTreeFrom start ft restNew (length commonSuffix + pos) tree
+        else
+          buildEdge pos commonSuffix
+          $ addSuffixToTreeFrom start ft restNew (length commonSuffix + pos)
+          (TreeNode [buildEdge (length commonSuffix + subtextStart) restExisting tree])
+              
+extractCommon :: String -> String -> (String, String, String)
+extractCommon [] r = ([], [], r)
+extractCommon l [] = ([], l, [])
+extractCommon l@(x:xs) r@(e:es) = 
     if x == e 
-    then x : extractCommon xs es
-    else []
+    then
+      let (common, restl, restr) = extractCommon xs es
+      in (x:common, restl, restr)
+    else ([], l, r)
 
-buildTreeFromScratch :: Int -> Array Int Char -> Tree
-buildTreeFromScratch size array = 
-    foldr addArraySuffix rootTree $ generateSuffixes size array
+buildTreeFromScratch :: Int -> [Char] -> Tree
+buildTreeFromScratch size text = 
+    foldl (addArraySuffix text) rootTree $ generateSuffixes 0 text
     where
-      addArraySuffix (start, text) trie = addSuffixToTree start array text trie
+      addArraySuffix ft trie (start, text) = addSuffixToTree start ft text trie
 
+slice :: Int -> Int -> [Char] -> [Char]
+slice start length text = take length $ drop start text
 
-slice :: Int -> Int -> Array Int Char -> Array Int Char
-slice start length array = ixmap (0, length-1) ((+) start) array
-
-collectEdges :: Array Int Char -> Tree -> [String]
+collectEdges :: [Char] -> Tree -> [String]
 collectEdges _ (TreeLeaf _) = []
 collectEdges text (TreeNode edges) = foldMap (collectEdgesFromEdge text) edges
   where collectEdgesFromEdge text (TreeEdge char tree) =
           [char] : collectEdges text tree
         collectEdgesFromEdge text (MergedTreeEdge start length tree) =
-          (elems $ slice start length text) : collectEdges text tree
+          slice start length text : collectEdges text tree
   
 solve4 :: String -> String
 solve4 input =
   let (text:_) = lines input
       size = length text
-      array = (listArray (0, size  - 1) text)
-  in unlines . collectEdges array $ buildTreeFromScratch size array
+  in unlines . collectEdges text $ buildTreeFromScratch size text
+
+solve4Trie :: String -> String
+solve4Trie input =
+  let (text:_) = lines input
+  in unlines . collectEdges text
+     $ (buildTree . buildTrie) text
 
 main :: IO ()
 main = do
