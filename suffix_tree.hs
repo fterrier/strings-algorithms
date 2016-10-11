@@ -1,5 +1,4 @@
 import Data.Foldable hiding (toList)
-import Data.Array
 import Prelude hiding (foldr, foldl)
 
 data Edge = Edge Char Trie deriving (Show)
@@ -14,7 +13,7 @@ addSuffix (x:xs) start (Node edges) =
   let ((Edge _ trie):rest) = asFirst edges x
   in Node $ Edge x (addSuffix xs start trie) : rest
   where asFirst [] char = [Edge char (Node [])]
-        asFirst ((Edge x trie):xs) char = 
+        asFirst ((Edge x trie):xs) char =
             if x == char
                then (Edge x trie):xs
                else asFirst xs char ++ [(Edge x trie)]
