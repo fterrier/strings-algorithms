@@ -1,31 +1,31 @@
-import Data.IntMap.Strict as IntMap hiding (map, toList)
 import Data.Map.Strict as Map hiding (map, toList)
-import Data.Array as Array
+import Data.Array as Array 
+import Data.IntMap as IntMap
 
 --import Test.QuickCheck
 --import Test.QuickCheck.Gen
 
 type Matrix = [String]
 
-firstColumn :: Matrix -> String
-firstColumn = map head
+-- firstColumn :: Matrix -> String
+-- firstColumn = map head
 
-lastColumn :: Matrix -> String
-lastColumn = map last
+-- lastColumn :: Matrix -> String
+-- lastColumn = map last
 
-toMap :: [a] -> IntMap a
-toMap text = IntMap.fromList $ zip [0..] text
+toArray :: [a] -> Array Int a
+toArray text = listArray (0, length text) text
 
-buildIndexes :: String -> (Map Char Int, IntMap Int)
-buildIndexes text = buildIndexesFrom 0 text Map.empty IntMap.empty
+buildIndexes :: String -> (Map Char Int, Array Int Int)
+buildIndexes text = buildIndexesFrom 0 text Map.empty []
   where
     buildIndexesFrom _ [] countMap occIndex =
       let (_, startIndex) = Map.mapAccum accumfn 0 countMap
-      in (startIndex, occIndex)
+      in (startIndex, toArray $ reverse occIndex)
          
     buildIndexesFrom index (x:xs) countMap occIndex =
       let newCountMap = Map.insertWith (+) x 1 countMap
-          newOccIndex = IntMap.insert index (newCountMap Map.! x) occIndex
+          newOccIndex = (newCountMap Map.! x) : occIndex
       in buildIndexesFrom (index+1) xs newCountMap newOccIndex
          
     accumfn x y = let z = x+y in (z, x)
@@ -34,21 +34,21 @@ bwtinverse :: String -> String
 bwtinverse bwt =
   let
     (fcstartind, lcoccind) = buildIndexes bwt
-    lc = toMap bwt
+    lc = toArray bwt
   in bwtinverseStep 0 fcstartind lc lcoccind "$"
   where
     bwtinverseStep index fcstartind lc lcoccind text =
-      let current = lc IntMap.! index :: Char
+      let current = lc Array.! index :: Char
       in
         if current == '$'
         then text
         else
-          bwtinverseStep (fcstartind Map.! current + lcoccind IntMap.! index - 1)
-            fcstartind lc lcoccind $! (current:text)
+          bwtinverseStep (fcstartind Map.! current + lcoccind Array.! index - 1)
+            fcstartind lc lcoccind $ (current:text)
 
 main :: IO ()
 main = do 
-  interact $ unlines . map bwtinverse . lines
+  interact $ unlines . Prelude.map bwtinverse . lines
 
 ----- quichcheck
 
